@@ -20,7 +20,8 @@
       "Bash(lsof -iTCP:3000 -iTCP:3001 -sTCP:LISTEN)",
       "Bash(curl -sS -o /dev/null -w \"status=%{http_code} time=%{time_total}s\\\\n\" http://localhost:3000/)",
       "Bash(curl *)",
-      "Bash(sqlite3 prisma/dev.db \".tables\")"
+      "Bash(sqlite3 prisma/dev.db \".tables\")",
+      "Bash(pnpm add *)"
     ]
   }
 }

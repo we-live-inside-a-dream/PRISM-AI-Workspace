@@ -16,7 +16,10 @@ export function ThemeToggle() {
   const [mounted, setMounted] = useState(false);
 
   // Avoid hydration mismatch: the server has no knowledge of the client's
-  // theme preference, so we render a placeholder until mounted.
+  // theme preference, so we render a placeholder until mounted. This is the
+  // canonical next-themes pattern; the set-state-in-effect lint rule is a
+  // false positive for a one-shot mount flag.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), []);
 
   if (!mounted) {
