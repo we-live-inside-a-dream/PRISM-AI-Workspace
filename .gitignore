@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/lib/generated/prisma
+
+# prisma sqlite dev db (Prisma 7 places it at cwd, not prisma/)
+/*.db
+/*.db-journal
+/prisma/*.db
+/prisma/*.db-journal

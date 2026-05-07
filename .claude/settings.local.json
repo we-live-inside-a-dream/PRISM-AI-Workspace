@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@14 --help)",
+      "Bash(npm ls *)",
+      "Bash(npx --yes create-next-app@14 --version)",
+      "Bash(pnpm -v)",
+      "Bash(command -v nvm)",
+      "Bash(cp -a ../prism-ai-workspace-scaffold/. .)",
+      "Bash(rm -rf ../prism-ai-workspace-scaffold)",
+      "Bash(curl -sS -o /dev/null -w \"status=%{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -sS http://localhost:3000/)",
+      "Bash(pkill -f \"next dev\")",
+      "Read(//private/tmp/**)",
+      "Bash(pkill -f \"next dev\\\\|next-server\")",
+      "Bash(pkill -9 -f \"next-server\\\\|next dev\\\\|next/dist/bin/next\")",
+      "Bash(lsof -iTCP:3000 -sTCP:LISTEN)",
+      "Bash(lsof -iTCP:3001 -sTCP:LISTEN)",
+      "Bash(kill -9 22871 27423)",
+      "Bash(lsof -iTCP:3000 -iTCP:3001 -sTCP:LISTEN)",
+      "Bash(curl -sS -o /dev/null -w \"status=%{http_code} time=%{time_total}s\\\\n\" http://localhost:3000/)",
+      "Bash(curl *)",
+      "Bash(sqlite3 prisma/dev.db \".tables\")"
+    ]
+  }
+}
