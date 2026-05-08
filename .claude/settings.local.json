@@ -21,7 +21,12 @@
       "Bash(curl -sS -o /dev/null -w \"status=%{http_code} time=%{time_total}s\\\\n\" http://localhost:3000/)",
       "Bash(curl *)",
       "Bash(sqlite3 prisma/dev.db \".tables\")",
-      "Bash(pnpm add *)"
+      "Bash(pnpm add *)",
+      "Bash(npm install *)",
+      "Bash(npm cache *)",
+      "Bash(npm --version)",
+      "Bash(sqlite3 *)",
+      "Bash(awk '{print $9, \"\\(\" $5 \"\\)\"}')"
     ]
   }
 }

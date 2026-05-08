@@ -84,7 +84,7 @@ export function ChatInput({
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKey}
         placeholder={placeholder}
-        disabled={isBusy && status === "submitted"}
+        disabled={isBusy}
         className={cn(
           "min-h-[2.5rem] resize-none border-0 bg-transparent p-2 shadow-none focus-visible:ring-0 focus-visible:outline-0",
         )}

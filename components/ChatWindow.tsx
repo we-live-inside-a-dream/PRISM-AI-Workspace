@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { useSWRConfig } from "swr";
+import { toast } from "sonner";
 import { ModeHeader } from "@/components/ModeHeader";
 import { MessageBubble } from "@/components/MessageBubble";
 import { ChatInput } from "@/components/ChatInput";
@@ -75,13 +76,16 @@ export function ChatWindow({
     [mode],
   );
 
-  const { messages, sendMessage, status, stop } = useChat({
+  const { messages, sendMessage, status, stop, error, clearError } = useChat({
     id: conversationId,
     messages: initialMessages,
     transport,
+    onError: (error) => {
+      console.error("[chat] client error:", error);
+      clearError();
+      toast.error(error instanceof Error ? error.message : "Something went wrong. Please try again.");
+    },
     onFinish: () => {
-      // Refresh the sidebar's history list so the new / updated conversation
-      // appears without a full-page reload.
       mutate("/api/history");
     },
   });

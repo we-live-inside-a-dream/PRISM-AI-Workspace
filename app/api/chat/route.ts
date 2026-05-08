@@ -17,12 +17,12 @@
 // Runtime: Node (Prisma + better-sqlite3 cannot run on Edge).
 
 import { NextRequest } from "next/server";
-import { anthropic } from "@ai-sdk/anthropic";
 import { streamText, convertToModelMessages, type UIMessage } from "ai";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { isMode, MODES, type Mode } from "@/lib/modes";
 import { textFromParts } from "@/lib/rehydrate";
+import { getModel, getProviderInfo } from "@/lib/llm";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -105,12 +105,25 @@ export async function POST(req: NextRequest) {
   }
 
   // ------------------------------------------------------------------
-  // 3) Stream the assistant's reply.
+  // 3) Stream the assistant's reply using the configured LLM provider.
   // ------------------------------------------------------------------
+  const model = getModel();
+  const providerInfo = getProviderInfo();
+  console.log(
+    `[chat] Using provider: ${providerInfo.provider}, model: ${providerInfo.modelId}`
+  );
+
   const result = streamText({
-    model: anthropic("claude-sonnet-4-5"),
+    model,
     system: MODES[mode].system,
     messages: await convertToModelMessages(messages),
+    // Log any errors from the model provider — otherwise the AI SDK swallows
+    // them and the client just sees an empty stream. This is especially
+    // important for OpenRouter, where non-Anthropic/OpenAI models may reject
+    // system prompts or return unexpected formats.
+    onError: ({ error }) => {
+      console.error("[chat] streamText error:", error);
+    },
   });
 
   // Capture id for the closure + response header.
@@ -125,15 +138,23 @@ export async function POST(req: NextRequest) {
       if (isAborted) return;
 
       try {
-        await prisma.message.create({
-          data: {
-            id: responseMessage.id,
-            conversationId: conversationIdForResponse,
-            role: "assistant",
-            content: textFromParts(responseMessage.parts),
-            parts: responseMessage.parts as never,
-          },
+        // Deduplicate: only persist if this message ID hasn't been saved yet.
+        // This mirrors the deduplication pattern used for user messages (lines 91-104)
+        // and prevents unique constraint errors if onFinish fires multiple times.
+        const existing = await prisma.message.findUnique({
+          where: { id: responseMessage.id },
         });
+        if (!existing) {
+          await prisma.message.create({
+            data: {
+              id: responseMessage.id,
+              conversationId: conversationIdForResponse,
+              role: "assistant",
+              content: textFromParts(responseMessage.parts),
+              parts: responseMessage.parts as never,
+            },
+          });
+        }
         await prisma.conversation.update({
           where: { id: conversationIdForResponse },
           data: { updatedAt: new Date() },
