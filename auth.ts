@@ -18,6 +18,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   adapter: PrismaAdapter(prisma as any),
   providers: [GitHub],
+  secret: process.env.AUTH_SECRET,
   session: { strategy: "database" },
   pages: { signIn: "/login" },
   callbacks: {
