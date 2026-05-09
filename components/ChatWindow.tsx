@@ -16,9 +16,8 @@
 // - Auto-scrolls to the bottom as messages and streamed tokens arrive
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage } from "ai";
+import { type UIMessage } from "ai";
 import { useSWRConfig } from "swr";
 import { toast } from "sonner";
 import { ModeHeader } from "@/components/ModeHeader";
@@ -26,6 +25,7 @@ import { MessageBubble } from "@/components/MessageBubble";
 import { ChatInput } from "@/components/ChatInput";
 import { LoadingDots } from "@/components/LoadingDots";
 import type { Mode } from "@/lib/modes";
+import { StreamingChatTransport } from "@/lib/StreamingChatTransport";
 
 type ChatWindowProps = {
   mode: Mode;
@@ -38,8 +38,16 @@ export function ChatWindow({
   conversationId,
   initialMessages,
 }: ChatWindowProps) {
-  const router = useRouter();
   const { mutate } = useSWRConfig();
+
+  // Stable chat id for the lifetime of this component instance. For an existing
+  // conversation we use its server id; for a brand-new chat we mint a UUID
+  // client-side and reuse it as the conversation id. This keeps useChat's `id`
+  // constant across the first send — without it, the id would flip from
+  // undefined -> server-generated mid-stream and useChat would discard the
+  // in-flight assistant message, surfacing it only on the *next* send (the
+  // "first message gets no response, second message returns both" bug).
+  const [chatId] = useState<string>(() => conversationId ?? crypto.randomUUID());
 
   // Track whether the URL has been reconciled to the real conversation id.
   // Used so we only router.replace() once, on the first send of a new chat.
@@ -51,33 +59,36 @@ export function ChatWindow({
   // new `key` when the sidebar switches modes (see app/chat/page.tsx).
   const transport = useMemo(
     () =>
-      new DefaultChatTransport({
+      new StreamingChatTransport({
         api: "/api/chat",
-        // `body` is resolvable — a function gives us fresh values at send time.
         body: () => ({
           mode,
-          conversationId: urlSyncedRef.current,
+          // Always send our stable chatId. The server treats this as an
+          // upsert key: find-or-create the conversation with this exact id,
+          // so the URL we router.replace() to below resolves on refresh.
+          conversationId: urlSyncedRef.current ?? chatId,
         }),
-        // Intercept the fetch so we can capture the x-conversation-id header
-        // before the stream is handed off to the chat state machine.
-        fetch: async (input, init) => {
-          const res = await fetch(input, init);
-          const newId = res.headers.get("x-conversation-id");
+        onConversationId: (newId) => {
           if (newId && newId !== urlSyncedRef.current) {
             urlSyncedRef.current = newId;
-            // Update the URL without triggering a full navigation/reload.
-            router.replace(`/chat?mode=${mode}&c=${newId}`, { scroll: false });
+            // Use history.replaceState instead of router.replace so the URL
+            // bar updates without re-running the server component or
+            // notifying Next.js's router. router.replace would re-render
+            // the parent with a new conversationId, change the ChatWindow
+            // key, and remount us mid-stream — losing the in-flight
+            // assistant message. The address bar still carries ?c=<id>
+            // so a manual refresh resolves the conversation correctly.
+            const url = `/chat?mode=${mode}&c=${newId}`;
+            window.history.replaceState(null, "", url);
           }
-          return res;
         },
       }),
-    // transport is intentionally stable across re-renders within one chat.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [mode],
   );
 
   const { messages, sendMessage, status, stop, error, clearError } = useChat({
-    id: conversationId,
+    id: chatId,
     messages: initialMessages,
     transport,
     onError: (error) => {
@@ -85,10 +96,14 @@ export function ChatWindow({
       clearError();
       toast.error(error instanceof Error ? error.message : "Something went wrong. Please try again.");
     },
-    onFinish: () => {
+    onFinish: (finishEvent) => {
       mutate("/api/history");
     },
   });
+
+  useEffect(() => {
+    console.log(`[chat] status=${status}, msgCount=${messages.length}`);
+  }, [status, messages.length]);
 
   // -- Example-card seeding: ChatInput listens to `seed` to pre-fill itself.
   const [seed, setSeed] = useState<string | undefined>();

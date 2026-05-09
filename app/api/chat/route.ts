@@ -17,7 +17,7 @@
 // Runtime: Node (Prisma + better-sqlite3 cannot run on Edge).
 
 import { NextRequest } from "next/server";
-import { streamText, convertToModelMessages, type UIMessage } from "ai";
+import { streamText, convertToModelMessages, type UIMessage, type IdGenerator } from "ai";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { isMode, MODES, type Mode } from "@/lib/modes";
@@ -50,9 +50,34 @@ export async function POST(req: NextRequest) {
   const { messages, conversationId } = body;
   const mode: Mode = isMode(body.mode) ? body.mode : "general";
 
+  console.log(`[chat] POST received: ${messages.length} messages, conversationId=${conversationId ?? "null"}, mode=${mode}`);
+  if (messages.length > 0) {
+    const lastMsg = messages[messages.length - 1];
+    console.log(`[chat] last message: role=${lastMsg.role}, hasParts=${Array.isArray(lastMsg.parts)}, partsLen=${Array.isArray(lastMsg.parts) ? lastMsg.parts.length : "N/A"}`);
+  }
+
   if (!Array.isArray(messages) || messages.length === 0) {
     return new Response("messages[] required", { status: 400 });
   }
+
+  // Normalize: ensure every message has a parts array. AI SDK v6 UIMessages
+  // use parts[] as the canonical shape. If any message lacks parts (e.g. a
+  // raw { role, content } object from an older client or a bug), synthesize a
+  // text part so convertToModelMessages never sees malformed input.
+  const normalizedMessages: UIMessage[] = messages.map((m, i) => {
+    const hasValidParts = Array.isArray(m.parts) && m.parts.length > 0;
+    if (!m.role || !hasValidParts) {
+      const msgAny = m as unknown as { content?: string };
+      const text = typeof msgAny.content === "string" ? msgAny.content : "";
+      console.log(`[chat] normalizing message[${i}]: role=${m.role ?? "missing"}, id=${m.id ?? "missing"}, text="${text.slice(0, 100)}"`);
+      return {
+        id: m.id ?? crypto.randomUUID(),
+        role: (m.role ?? "user") as UIMessage["role"],
+        parts: [{ type: "text", text }] as UIMessage["parts"],
+      };
+    }
+    return m;
+  });
 
   // ------------------------------------------------------------------
   // 1) Resolve (or create) the conversation, scoped to the signed-in user.
@@ -70,14 +95,36 @@ export async function POST(req: NextRequest) {
   if (!convo) {
     // Seed the title from the first user message's text parts. We trim and
     // cap it so long prompts don't bloat the sidebar.
-    const firstUser = messages.find((m) => m.role === "user");
+    const firstUser = normalizedMessages.find((m) => m.role === "user");
     const seedTitle = firstUser ? textFromParts(firstUser.parts).trim() : "";
     const title =
       seedTitle.length > 0 ? seedTitle.slice(0, 80) : MODES[mode].label;
 
-    convo = await prisma.conversation.create({
-      data: { userId, mode, title },
-    });
+    // If the client supplied a conversationId we couldn't find above, honor
+    // it as the new row's id. This is how Option A (client-minted UUID) keeps
+    // useChat's `id` stable across the first send: the URL we ack via the
+    // x-conversation-id header is the same id the client already knows about,
+    // so no mid-stream identity flip occurs.
+    //
+    // Safety: findFirst above is scoped to {id, userId}, so a missing row
+    // here means either (a) a brand-new client-minted id, or (b) an id that
+    // belongs to another user. In case (b), prisma.create will throw on the
+    // unique-id constraint; we fall back to a server-generated id so the
+    // request still succeeds rather than 500ing.
+    try {
+      convo = await prisma.conversation.create({
+        data: {
+          ...(conversationId ? { id: conversationId } : {}),
+          userId,
+          mode,
+          title,
+        },
+      });
+    } catch {
+      convo = await prisma.conversation.create({
+        data: { userId, mode, title },
+      });
+    }
   }
 
   // ------------------------------------------------------------------
@@ -86,7 +133,7 @@ export async function POST(req: NextRequest) {
   //    We only save it if it's actually new (i.e. it doesn't already have
   //    a DB row with the same id).
   // ------------------------------------------------------------------
-  const trailing = messages[messages.length - 1];
+  const trailing = normalizedMessages[normalizedMessages.length - 1];
   if (trailing.role === "user") {
     const already = await prisma.message.findUnique({
       where: { id: trailing.id },
@@ -113,26 +160,50 @@ export async function POST(req: NextRequest) {
     `[chat] Using provider: ${providerInfo.provider}, model: ${providerInfo.modelId}`
   );
 
-  const result = streamText({
-    model,
-    system: MODES[mode].system,
-    messages: await convertToModelMessages(messages),
-    // Log any errors from the model provider — otherwise the AI SDK swallows
-    // them and the client just sees an empty stream. This is especially
-    // important for OpenRouter, where non-Anthropic/OpenAI models may reject
-    // system prompts or return unexpected formats.
-    onError: ({ error }) => {
-      console.error("[chat] streamText error:", error);
-    },
-  });
+const modelMessages = await convertToModelMessages(normalizedMessages);
+  console.log(`[chat] convertToModelMessages produced ${modelMessages.length} model messages`);
+  if (modelMessages.length > 0) {
+    const first = modelMessages[0];
+    console.log(`[chat] first message role=${first.role}, content type=${typeof first.content}, content len=${typeof first.content === "string" ? first.content.length : Array.isArray(first.content) ? first.content.length : "N/A"}`);
+  }
 
-  // Capture id for the closure + response header.
+  let result;
+  try {
+    result = streamText({
+      model,
+      system: MODES[mode].system,
+      messages: modelMessages,
+      onChunk: ({ chunk }) => {
+        console.log(`[chat] stream chunk type=${chunk.type}, id=${(chunk as { id?: string }).id ?? "n/a"}`);
+      },
+      onFinish: ({ finishReason, usage }) => {
+        console.log(`[chat] streamText onFinish: reason=${finishReason}, usage=${JSON.stringify(usage)}`);
+      },
+      onError: ({ error }) => {
+        console.error("[chat] streamText error:", error);
+      },
+    });
+  } catch (err) {
+    console.error("[chat] streamText constructor threw synchronously:", err);
+    return new Response(JSON.stringify({ error: "Stream initialization failed" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const conversationIdForResponse = convo.id;
 
   return result.toUIMessageStreamResponse({
-    // Persist the assistant turn + bump the conversation's updatedAt so the
-    // sidebar's "recent chats" ordering is correct.
+    // REQUIRED when using generateMessageId. Without originalMessages, the SDK
+    // can't thread the new id into the stream's `start`/`text-start` chunks —
+    // the client receives deltas tagged with the provider's temp id (e.g.
+    // `msg_tmp_…`) that don't match any UI message, so nothing renders during
+    // the first turn. The assistant text only appears after a page reload or
+    // a follow-up send pulls it from history.
+    originalMessages: normalizedMessages,
+    generateMessageId: (() => crypto.randomUUID()) as IdGenerator,
     onFinish: async ({ responseMessage, isAborted }) => {
+      console.log(`[chat] toUIMessageStreamResponse onFinish: messageId=${responseMessage.id}, isAborted=${isAborted}, parts=${responseMessage.parts.length}`);
       // If the user aborted, don't persist a partial assistant row — the
       // next send will include the same conversation and continue cleanly.
       if (isAborted) return;

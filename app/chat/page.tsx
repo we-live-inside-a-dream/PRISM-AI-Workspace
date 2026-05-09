@@ -6,8 +6,18 @@
 //     and rehydrate them into UIMessage shape for the client
 //   - Render the Sidebar + ChatWindow shell
 //
-// The ChatWindow is keyed on `${mode}-${conversationId}` so switching mode or
-// conversation fully re-mounts the client component (wipes useChat state).
+// The ChatWindow is keyed on `mode` only — switching modes wipes useChat
+// state, but switching conversations is handled internally so an in-flight
+// stream survives the URL update that happens on the first send of a new
+// chat (when we router.replace to add ?c=<newId>).
+//
+// IMPORTANT: do NOT include conversationId in the key. The first send of a
+// brand-new chat triggers router.replace(?c=<newId>) the moment the server
+// returns the x-conversation-id header. If conversationId were part of the
+// key, that URL update would remount ChatWindow mid-stream — useChat would
+// lose its in-flight assistant message, the streamed deltas would be
+// orphaned, and nothing would render. The "first message: no response;
+// second message: both at once" bug.
 
 import { redirect } from "next/navigation";
 import { Menu } from "lucide-react";
@@ -116,6 +126,14 @@ export default async function ChatPage({
 
         <div className="min-h-0 flex-1">
           <ChatWindow
+            // Key includes conversationId so navigating between existing
+            // chats (sidebar clicks) remounts and resets useChat state.
+            // The brand-new-chat first-send case is handled by ChatWindow
+            // itself: instead of router.replace (which re-runs this server
+            // component and would remount mid-stream), it uses
+            // window.history.replaceState to update the URL bar without
+            // notifying React's router. Refresh still works because the
+            // address bar carries ?c=<id>.
             key={`${activeMode}-${conversationId ?? "new"}`}
             mode={activeMode}
             conversationId={conversationId}

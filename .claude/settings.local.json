@@ -26,7 +26,8 @@
       "Bash(npm cache *)",
       "Bash(npm --version)",
       "Bash(sqlite3 *)",
-      "Bash(awk '{print $9, \"\\(\" $5 \"\\)\"}')"
+      "Bash(awk '{print $9, \"\\(\" $5 \"\\)\"}')",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }
