@@ -21,7 +21,9 @@
     "@ai-sdk/react": "3.0.177",
     "@auth/prisma-adapter": "^2.11.2",
     "@base-ui/react": "^1.4.1",
+    "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "pg": "^8.11.0",
     "ai": "6.0.175",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -43,6 +45,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/pg": "^8.10.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
