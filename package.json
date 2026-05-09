@@ -14,14 +14,14 @@
     "postinstall": "prisma generate || true"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.75",
-    "@ai-sdk/openai": "^3.0.0",
-    "@ai-sdk/provider-utils": "^3.0.0",
-    "@ai-sdk/react": "^3.0.177",
+    "@ai-sdk/anthropic": "3.0.75",
+    "@ai-sdk/openai": "3.0.63",
+    "@ai-sdk/provider-utils": "4.0.27",
+    "@ai-sdk/react": "3.0.177",
     "@auth/prisma-adapter": "^2.11.2",
     "@base-ui/react": "^1.4.1",
     "@prisma/client": "^7.8.0",
-    "ai": "^6.0.175",
+    "ai": "6.0.175",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "highlight.js": "^11.11.1",
@@ -57,10 +57,6 @@
     "onlyBuiltDependencies": [
       "@prisma/engines",
       "prisma"
-    ],
-    "overrides": {
-      "@ai-sdk/provider": "^3.0.10",
-      "@ai-sdk/provider-utils": "^3.0.0"
-    }
+    ]
   }
 }
