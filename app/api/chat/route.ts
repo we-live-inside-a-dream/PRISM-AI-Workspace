@@ -14,7 +14,7 @@
 //   - `x-conversation-id` header lets the client swap a freshly-created id
 //     into its URL without a reload.
 //
-// Runtime: Node (Prisma + better-sqlite3 cannot run on Edge).
+// Runtime: Node (PostgreSQL requires Node runtime, not Edge).
 
 import { NextRequest } from "next/server";
 import { streamText, convertToModelMessages, type UIMessage, type IdGenerator } from "ai";

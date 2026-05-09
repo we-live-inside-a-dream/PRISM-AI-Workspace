@@ -8,7 +8,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 // ─── NextAuth v5 / Auth.js Prisma adapter models ─────────────────────────
